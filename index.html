@@ -182,17 +182,22 @@ if (error) {
 
 async function controlarSesionActiva(userId) {
   setInterval(async () => {
-    const { data } = await supabase
-      .from("sesiones_activas")
-      .select("id")
-      .eq("user_id", userId)
-      .single()
 
-    if (!data) {
+    const { data, error } = await supabase
+      .from("sesiones_activas")
+      .select("user_id")
+      .eq("user_id", userId)
+
+    // Si hay error real, no hacemos nada
+    if (error) return
+
+    // Si no existe ningún registro, recién ahí expulsamos
+    if (!data || data.length === 0) {
       alert("Tu sesión fue iniciada en otro dispositivo ⚠️")
       await supabase.auth.signOut()
       location.reload()
     }
+
   }, 5000) // cada 5 segundos
 }
 
