@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Planificador Primaria</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg, #4e73df, #1cc88a);
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+.card {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  width: 450px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+h1, h2 { text-align:center; margin-top:0; }
+
+select, input {
+  width:100%;
+  padding:8px;
+  border-radius:6px;
+  border:1px solid #ccc;
+  margin-bottom:10px;
+}
+
+button {
+  width:100%;
+  padding:10px;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+  font-weight:bold;
+  transition:0.3s;
+}
+
+.btn-primary { background:#4e73df; color:white; }
+.btn-primary:hover { background:#2e59d9; }
+
+.btn-danger { background:#e74a3b; color:white; margin-bottom:15px; }
+.btn-danger:hover { background:#c0392b; }
+
+.user-info {
+  background:#f8f9fc;
+  padding:8px;
+  border-radius:6px;
+  margin-bottom:15px;
+  text-align:center;
+  font-size:14px;
+}
+</style>
+
+<script type="module">
+import * as docx from "https://cdn.jsdelivr.net/npm/docx@8.5.0/+esm";
+window.docx = docx;
+</script>
+
+</head>
+
+<body>
+
+<div id="login" class="card">
+<h2>Ingreso Docentes</h2>
+
+<input type="email" id="email" placeholder="Email">
+<input type="password" id="password" placeholder="Contraseña">
+<button id="btnLogin" class="btn-primary">Ingresar</button>
+<p id="mensaje" style="color:red;text-align:center;"></p>
+
+</div>
+
+
+
+<div id="app" class="card" style="display:none;">
+
+<div class="user-info">
+Bienvenido/a: <strong id="userEmail"></strong>
+</div>
+
+<button id="btnLogout" class="btn-danger">Cerrar sesión</button>
+
+<h1>Planificador</h1>
+
+<select id="espacio"></select>
+<select id="unidad"></select>
+<select id="competencia_general"></select>
+<select id="competencia_especifica"></select>
+<select id="criterio_logro"></select>
+<select id="contenido_select"></select>
+<button id="btnDescargar">Descargar Word</button>
+
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+const supabase = createClient(
+  'https://vxdfqufvqnzrgsddcyul.supabase.co',
+  'sb_publishable_9h5fX4zEr11EAFcH6Q8uhQ_h8x2QU0-'
+)
+
+const loginDiv = document.getElementById("login")
+const appDiv = document.getElementById("app")
+const btnLogin = document.getElementById("btnLogin")
+const btnLogout = document.getElementById("btnLogout")
+const mensaje = document.getElementById("mensaje")
+const userEmailSpan = document.getElementById("userEmail")
+
+const espacioSelect = document.getElementById("espacio")
+const unidadSelect = document.getElementById("unidad")
+const competenciaGeneralSelect = document.getElementById("competencia_general")
+const competenciaEspecificaSelect = document.getElementById("competencia_especifica")
+const criterioSelect = document.getElementById("criterio_logro")
+const contenidosSelect = document.getElementById("contenido_select")
+
+// ---------- SESIÓN ----------
+async function verificarSesion() {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (session) {
+    loginDiv.style.display = "none"
+    appDiv.style.display = "block"
+    userEmailSpan.textContent = session.user.email
+    
+    // 🔥 ACTIVAR CONTROL DE SESIÓN
+    controlarSesionActiva(session.user.id)
+    
+    await cargarEspacios()
+  } else {
+    loginDiv.style.display = "block"
+    appDiv.style.display = "none"
+  }
+}
+
+// ---------- LOGIN ----------
+btnLogin.addEventListener("click", async () => {
+  const email = document.getElementById("email").value
+  const password = document.getElementById("password").value
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+  email,
+  password
+})
+
+if (error) {
+  alert("Correo o contraseña incorrectos ❌")
+  return
+} else {
+  const user = data.user
+
+  // 🔥 Eliminar sesiones anteriores
+  await supabase
+    .from("sesiones_activas")
+    .delete()
+    .eq("user_id", user.id)
+
+  // 🔥 Insertar nueva sesión
+  await supabase
+    .from("sesiones_activas")
+    .insert({
+      user_id: user.id,
+      ultima_actividad: new Date().toISOString()
+    })
+
+    controlarSesionActiva(user.id)
+
+  verificarSesion()
+
+  
+}
+
+async function controlarSesionActiva(userId) {
+  setInterval(async () => {
+    const { data } = await supabase
+      .from("sesiones_activas")
+      .select("id")
+      .eq("user_id", userId)
+      .single()
+
+    if (!data) {
+      alert("Tu sesión fue iniciada en otro dispositivo ⚠️")
+      await supabase.auth.signOut()
+      location.reload()
+    }
+  }, 5000) // cada 5 segundos
+}
+
+})
+
+// ---------- LOGOUT ----------
+btnLogout.addEventListener("click", async () => {
+  await supabase.auth.signOut()
+  location.reload()
+})
+
+// ---------- CASCADA ----------
+
+async function cargarEspacios() {
+  const { data, error } = await supabase
+    .from("contenidos")
+    .select("espacio")
+
+  if (error) {
+    alert(error.message)
+    return
+  }
+
+  const unicos = [...new Set(data.map(e => e.espacio))]
+
+  espacioSelect.innerHTML = "<option>Seleccione espacio</option>"
+
+  unicos.forEach(e => {
+    espacioSelect.innerHTML += `<option value="${e}">${e}</option>`
+  })
+}
+
+espacioSelect.addEventListener("change", async () => {
+  const { data } = await supabase
+    .from("contenidos")
+    .select("unidad")
+    .eq("espacio", espacioSelect.value)
+
+  const unicos = [...new Set(data.map(u => u.unidad))]
+
+  unidadSelect.innerHTML = "<option>Seleccione unidad</option>"
+  competenciaGeneralSelect.innerHTML = ""
+  competenciaEspecificaSelect.innerHTML = ""
+  criterioSelect.innerHTML = ""
+  contenidosSelect.innerHTML = ""
+
+  unicos.forEach(u => {
+    unidadSelect.innerHTML += `<option value="${u}">${u}</option>`
+  })
+})
+
+unidadSelect.addEventListener("change", async () => {
+  const { data } = await supabase
+    .from("contenidos")
+    .select("competencia_general")
+    .eq("unidad", unidadSelect.value)
+
+  const unicos = [...new Set(data.map(c => c.competencia_general))]
+
+  competenciaGeneralSelect.innerHTML = "<option>Seleccione competencia general</option>"
+
+  unicos.forEach(c => {
+    competenciaGeneralSelect.innerHTML += `<option value="${c}">${c}</option>`
+  })
+})
+
+competenciaGeneralSelect.addEventListener("change", async () => {
+  const { data, error } = await supabase
+    .from("contenidos")
+    .select("competencia_especifica")
+    .eq("espacio", espacioSelect.value)
+    .eq("unidad", unidadSelect.value)
+    .eq("competencia_general", competenciaGeneralSelect.value)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const unicos = [...new Set(data.map(c => c.competencia_especifica))]
+
+  competenciaEspecificaSelect.innerHTML = "<option>Seleccione competencia específica</option>"
+
+  unicos.forEach(valor => {
+    competenciaEspecificaSelect.innerHTML += `<option value="${valor}">${valor}</option>`
+  })
+})
+
+competenciaEspecificaSelect.addEventListener("change", async () => {
+  const { data, error } = await supabase
+    .from("contenidos")
+    .select("criterio_logro")
+    .eq("espacio", espacioSelect.value)
+    .eq("unidad", unidadSelect.value)
+    .eq("competencia_general", competenciaGeneralSelect.value)
+    .eq("competencia_especifica", competenciaEspecificaSelect.value)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const unicos = [...new Set(data.map(c => c.criterio_logro))]
+
+  criterioSelect.innerHTML = "<option>Seleccione criterio de logro</option>"
+
+  unicos.forEach(valor => {
+    criterioSelect.innerHTML += `<option value="${valor}">${valor}</option>`
+  })
+  })
+
+criterioSelect.addEventListener("change", async () => {
+  const { data, error } = await supabase
+    .from("contenidos")
+    .select("contenido")
+    .eq("espacio", espacioSelect.value)
+    .eq("unidad", unidadSelect.value)
+    .eq("competencia_general", competenciaGeneralSelect.value)
+    .eq("competencia_especifica", competenciaEspecificaSelect.value)
+    .eq("criterio_logro", criterioSelect.value)
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  const unicos = [...new Set(data.map(c => c.contenido))]
+
+  contenidosSelect.innerHTML = "<option>Seleccione contenido</option>"
+
+  unicos.forEach(valor => {
+    contenidosSelect.innerHTML += `<option value="${valor}">${valor}</option>`
+  })
+})
+
+document.getElementById("btnDescargar").addEventListener("click", async () => {
+
+  const { Document, Packer, Paragraph, Table, TableRow, TableCell, WidthType } = window.docx
+
+  // Tomamos los valores seleccionados
+  const datos = [
+    ["Espacio", espacioSelect.value],
+    ["Unidad", unidadSelect.value],
+    ["Competencia General", competenciaGeneralSelect.value],
+    ["Competencia Específica", competenciaEspecificaSelect.value],
+    ["Criterio de Logro", criterioSelect.value],
+    ["Contenido", contenidosSelect.value],
+  ]
+
+  // Crear filas de la tabla
+  const rows = datos.map(d =>
+    new TableRow({
+      children: [
+        new TableCell({
+          width: { size: 50, type: WidthType.PERCENTAGE },
+          children: [new Paragraph(d[0])]
+        }),
+        new TableCell({
+          width: { size: 50, type: WidthType.PERCENTAGE },
+          children: [new Paragraph(d[1])]
+        }),
+      ]
+    })
+  )
+
+  const table = new Table({
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph("Campo")] }),
+          new TableCell({ children: [new Paragraph("Valor seleccionado")] }),
+        ]
+      }),
+      ...rows
+    ]
+  })
+
+  const doc = new Document({
+    sections: [{
+      children: [
+        new Paragraph("Selección de Contenidos"),
+        table
+      ]
+    }]
+  })
+
+  const blob = await Packer.toBlob(doc)
+
+  const link = document.createElement("a")
+  link.href = URL.createObjectURL(blob)
+  link.download = "Seleccion_de_Contenidos.docx"
+  link.click()
+})
+
+
+window.addEventListener("load", verificarSesion)
+
+</script>
+</body>
+</html>
+
