@@ -132,10 +132,6 @@ async function verificarSesion() {
     loginDiv.style.display = "none"
     appDiv.style.display = "block"
     userEmailSpan.textContent = session.user.email
-    
-    // 🔥 ACTIVAR CONTROL DE SESIÓN
-    controlarSesionActiva(session.user.id)
-    
     await cargarEspacios()
   } else {
     loginDiv.style.display = "block"
@@ -148,59 +144,14 @@ btnLogin.addEventListener("click", async () => {
   const email = document.getElementById("email").value
   const password = document.getElementById("password").value
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-  email,
-  password
-})
+  const { error } = await supabase.auth.signInWithPassword({ email, password })
 
-if (error) {
+  if (error) {
   alert("Correo o contraseña incorrectos ❌")
   return
 } else {
-  const user = data.user
-
-  // 🔥 Eliminar sesiones anteriores
-  await supabase
-    .from("sesiones_activas")
-    .delete()
-    .eq("user_id", user.id)
-
-  // 🔥 Insertar nueva sesión
-  await supabase
-    .from("sesiones_activas")
-    .insert({
-      user_id: user.id,
-      ultima_actividad: new Date().toISOString()
-    })
-
-    controlarSesionActiva(user.id)
-
-  verificarSesion()
-
-  
-}
-
-async function controlarSesionActiva(userId) {
-  setInterval(async () => {
-
-    const { data, error } = await supabase
-      .from("sesiones_activas")
-      .select("user_id")
-      .eq("user_id", userId)
-
-    // Si hay error real, no hacemos nada
-    if (error) return
-
-    // Si no existe ningún registro, recién ahí expulsamos
-    if (!data || data.length === 0) {
-      alert("Tu sesión fue iniciada en otro dispositivo ⚠️")
-      await supabase.auth.signOut()
-      location.reload()
-    }
-
-  }, 5000) // cada 5 segundos
-}
-
+    verificarSesion()
+  }
 })
 
 // ---------- LOGOUT ----------
