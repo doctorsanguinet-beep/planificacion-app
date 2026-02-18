@@ -100,6 +100,14 @@ Bienvenido/a: <strong id="userEmail"></strong>
 <select id="contenido_select"></select>
 <button id="btnDescargar">Descargar Word</button>
 
+// Subir archivo de Word a Drive
+
+<button id="btnGenerar">Generar Planificación</button>
+
+<button id="btnDrive" style="display:none; margin-top:10px;">
+  📂 Abrir en Google Drive
+</button>
+
 </div>
 
 <script type="module">
@@ -132,6 +140,10 @@ async function verificarSesion() {
     loginDiv.style.display = "none"
     appDiv.style.display = "block"
     userEmailSpan.textContent = session.user.email
+    
+    // 🔥 ACTIVAR CONTROL DE SESIÓN
+    controlarSesionActiva(session.user.id)
+    
     await cargarEspacios()
   } else {
     loginDiv.style.display = "block"
@@ -144,19 +156,77 @@ btnLogin.addEventListener("click", async () => {
   const email = document.getElementById("email").value
   const password = document.getElementById("password").value
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
+  const { data, error } = await supabase.auth.signInWithPassword({
+  email,
+  password
+})
 
-  if (error) {
+if (error) {
   alert("Correo o contraseña incorrectos ❌")
   return
 } else {
-    verificarSesion()
-  }
+  const user = data.user
+
+  // Generar ID único para este navegador
+const sessionId = crypto.randomUUID()
+
+// Guardarlo en el navegador
+localStorage.setItem("session_id", sessionId)
+
+// Eliminar sesiones anteriores del usuario
+await supabase
+  .from("sesiones_activas")
+  .delete()
+  .eq("user_id", user.id)
+
+// Insertar nueva sesión
+await supabase
+  .from("sesiones_activas")
+  .insert({
+    user_id: user.id,
+    session_id: sessionId,
+    ultima_actividad: new Date().toISOString()
+  })
+
+controlarSesionActiva(user.id)
+
+verificarSesion()
+
+  
+}
+
+async function controlarSesionActiva(userId) {
+
+  const sessionId = localStorage.getItem("session_id")
+
+  setInterval(async () => {
+
+    const { data, error } = await supabase
+      .from("sesiones_activas")
+      .select("session_id")
+      .eq("user_id", userId)
+      .eq("session_id", sessionId)
+
+    if (error) return
+
+    // Si no existe ESTE session_id, fue desplazado
+    if (!data || data.length === 0) {
+      alert("Tu sesión fue iniciada en otro dispositivo ⚠️")
+      await supabase.auth.signOut()
+      localStorage.removeItem("session_id")
+      location.reload()
+    }
+
+  }, 5000)
+}
+
+
 })
 
 // ---------- LOGOUT ----------
 btnLogout.addEventListener("click", async () => {
   await supabase.auth.signOut()
+  localStorage.removeItem("session_id")
   location.reload()
 })
 
@@ -341,6 +411,15 @@ document.getElementById("btnDescargar").addEventListener("click", async () => {
   link.href = URL.createObjectURL(blob)
   link.download = "Seleccion_de_Contenidos.docx"
   link.click()
+
+  // 👇 Mostrar botón Drive después de descargar
+document.getElementById("btnDrive").style.display = "inline-block"
+
+})
+
+// 🔹 AQUÍ va el paso 3 👇
+document.getElementById("btnDrive").addEventListener("click", () => {
+   window.open("https://drive.google.com/drive/my-drive", "_blank")
 })
 
 
