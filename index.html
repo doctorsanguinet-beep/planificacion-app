@@ -100,6 +100,12 @@ Bienvenido/a: <strong id="userEmail"></strong>
 <select id="contenido_select"></select>
 <button id="btnDescargar">Descargar Word</button>
 
+<button id="btnGenerar">Generar Planificación</button>
+
+<button id="btnDrive" style="display:none; margin-top:10px;">
+  📂 Abrir en Google Drive
+</button>
+
 </div>
 
 <script type="module">
@@ -180,7 +186,6 @@ await supabase
     ultima_actividad: new Date().toISOString()
   })
 
-controlarSesionActiva(user.id)
 
 verificarSesion()
 
@@ -403,6 +408,15 @@ document.getElementById("btnDescargar").addEventListener("click", async () => {
   link.href = URL.createObjectURL(blob)
   link.download = "Seleccion_de_Contenidos.docx"
   link.click()
+
+  // 👇 Mostrar botón Drive después de descargar
+document.getElementById("btnDrive").style.display = "inline-block"
+
+})
+
+// 🔹 AQUÍ va el paso 3 👇
+document.getElementById("btnDrive").addEventListener("click", () => {
+   window.open("https://drive.google.com/drive/my-drive", "_blank")
 })
 
 
